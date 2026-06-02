@@ -1,10 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = [
+    "setuptools>=64",
+    "setuptools-scm>=8"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sglang-omni"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Multi-stage pipeline framework for omni models"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -75,6 +78,8 @@ dependencies = [
 [project.scripts]
 sgl-omni = "sglang_omni.cli:app"
 sgl-omni-router = "sglang_omni_router.serve:main"
+
+[tool.setuptools_scm]
 
 [tool.uv]
 override-dependencies = [

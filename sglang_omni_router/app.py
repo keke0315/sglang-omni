@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
+from sglang_omni import __version__
 from sglang_omni.http.favicon import register_favicon
 from sglang_omni_router.config import RouterConfig, WorkerConfig
 from sglang_omni_router.health import HealthChecker
@@ -87,7 +88,7 @@ def create_app(
             if owns_client:
                 await client.aclose()
 
-    app = FastAPI(title="sglang-omni-router", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="sglang-omni-router", version=__version__, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

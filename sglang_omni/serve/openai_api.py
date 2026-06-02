@@ -29,6 +29,8 @@ from fastapi.responses import (
     StreamingResponse,
 )
 
+from sglang_omni import __version__
+
 from sglang_omni.client import (
     Client,
     ClientError,
@@ -94,7 +96,7 @@ def create_app(
     Returns:
         Configured FastAPI application.
     """
-    app = FastAPI(title="sglang-omni", version="0.1.0")
+    app = FastAPI(title="sglang-omni", version=__version__)
 
     app.add_middleware(
         CORSMiddleware,

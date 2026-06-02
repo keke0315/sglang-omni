@@ -9,8 +9,12 @@ loading the full pipeline runtime and heavyweight scheduler dependencies.
 from __future__ import annotations
 
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("sglang-omni")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     # client
