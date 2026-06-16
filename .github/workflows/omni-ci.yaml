@@ -1,9 +1,9 @@
 name: Omni CI
 
 # DAG:
-#   preflight ──► setup ──► tts-ci ──► qwen3-omni-ci ──► pr-test
-#                    │          │              │              │
-#                    └──────────┴──────────────┴──────────────┴──► cleanup
+#   preflight ──► setup ──► pr-test ──► tts-ci ──► qwen3-omni-ci
+#                    │           │          │              │
+#                    └───────────┴──────────┴──────────────┴──► cleanup
 
 
 on:
@@ -96,7 +96,7 @@ jobs:
     runs-on: [self-hosted]
     timeout-minutes: 30
     container:
-      image: frankleeeee/sglang-omni:dev
+      image: crpi-n6adu6llixz83q37.cn-hangzhou.personal.cr.aliyuncs.com/hongccc/sglang-omni:dev
       options: >-
         --gpus all --rm
         -v /dev/shm:/dev/shm
@@ -129,8 +129,10 @@ jobs:
 
   tts-ci:
     name: TTS CI
-    needs: setup
-    if: needs.setup.result == 'success'
+    needs: [setup, pr-test]
+    if: >-
+      always() && !cancelled() &&
+      needs.setup.result == 'success'
     uses: ./.github/workflows/test-tts-ci.yaml
     secrets: inherit
 
@@ -145,9 +147,8 @@ jobs:
 
   pr-test:
     name: PR Test
-    needs: [setup, qwen3-omni-ci]
+    needs: setup
     if: >-
-      always() && !cancelled() &&
       needs.setup.result == 'success'
     uses: ./.github/workflows/test.yaml
     secrets: inherit
@@ -161,7 +162,7 @@ jobs:
     runs-on: [self-hosted]
     timeout-minutes: 5
     container:
-      image: frankleeeee/sglang-omni:dev
+      image: crpi-n6adu6llixz83q37.cn-hangzhou.personal.cr.aliyuncs.com/hongccc/sglang-omni:dev
       options: >-
         --gpus all --rm
         -v /dev/shm:/dev/shm
