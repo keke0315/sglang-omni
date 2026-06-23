@@ -937,6 +937,100 @@ def test_qwen3_tts_vocoder_batches_decode_requests(
     assert second_audio.tolist() == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
 
 
+def test_qwen3_tts_vocoder_single_request_reuses_batch_backbone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sglang_omni.models.qwen3_tts import stages
+
+    decode_batch_sizes: list[int] = []
+
+    class FakeTokenizer:
+        def decode(self, encoded):
+            decode_batch_sizes.append(len(encoded))
+            return [torch.arange(5, dtype=torch.float32)], 22050
+
+    monkeypatch.setattr(
+        stages,
+        "_load_qwen3_tts_tokenizer",
+        lambda *args, **kwargs: FakeTokenizer(),
+    )
+
+    scheduler = stages.create_vocoder_executor("model")
+    payload = make_payload(inputs="single")
+    payload.data = Qwen3TTSState(
+        audio_codes=torch.tensor([[1, 2], [3, 4]]),
+        prompt_tokens=3,
+        completion_tokens=2,
+    ).to_dict()
+
+    result = scheduler._fn(payload)
+
+    assert decode_batch_sizes == [1]
+    assert result.data["sample_rate"] == 22050
+    assert result.data["modality"] == "audio"
+    assert result.data["usage"] == {
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "total_tokens": 5,
+    }
+    audio = np.frombuffer(result.data["audio_waveform"], dtype=np.float32)
+    assert audio.tolist() == [0.0, 1.0, 2.0, 3.0, 4.0]
+
+
+def test_qwen3_tts_vocoder_rejects_missing_audio_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sglang_omni.models.qwen3_tts import stages
+
+    class FakeTokenizer:
+        def decode(self, encoded):
+            raise AssertionError(f"decode should not run: {encoded}")
+
+    monkeypatch.setattr(
+        stages,
+        "_load_qwen3_tts_tokenizer",
+        lambda *args, **kwargs: FakeTokenizer(),
+    )
+
+    scheduler = stages.create_vocoder_executor("model")
+    payload = make_payload(inputs="missing")
+    payload.data = Qwen3TTSState().to_dict()
+
+    with pytest.raises(
+        RuntimeError, match="Qwen3-TTS vocoder requires audio_codes from tts_engine"
+    ):
+        scheduler._fn(payload)
+
+
+def test_qwen3_tts_vocoder_rejects_decode_count_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sglang_omni.models.qwen3_tts import stages
+
+    class FakeTokenizer:
+        def decode(self, encoded):
+            assert len(encoded) == 2
+            return [torch.arange(3, dtype=torch.float32)], 24000
+
+    monkeypatch.setattr(
+        stages,
+        "_load_qwen3_tts_tokenizer",
+        lambda *args, **kwargs: FakeTokenizer(),
+    )
+
+    scheduler = stages.create_vocoder_executor("model", max_batch_size=2)
+    first = make_payload(inputs="first")
+    first.data = Qwen3TTSState(audio_codes=torch.tensor([[1, 2]])).to_dict()
+    second = make_payload(inputs="second")
+    second.data = Qwen3TTSState(audio_codes=torch.tensor([[3, 4]])).to_dict()
+
+    with pytest.raises(
+        RuntimeError,
+        match="Qwen3-TTS speech tokenizer returned 1 audios for 2 requests",
+    ):
+        scheduler._batch_fn([first, second])
+
+
 def test_qwen3_tts_result_adapter_keeps_code_handoff_tensor_native() -> None:
     """Avoids list serialization between the AR stage and vocoder stage."""
     payload = make_payload(inputs="target")
