@@ -1,4 +1,5 @@
-"""Shared skeleton for batched vocoders."""
+"""Base class for batched vocoders.  (keke0315)
+"""
 
 from __future__ import annotations
 
@@ -13,14 +14,13 @@ DecodedItemT = TypeVar("DecodedItemT")
 
 
 class BatchVocoderBase(ABC, Generic[PreparedItemT, DecodedItemT]):
-    # Hooks overridden by model-specific vocoders.
     @abstractmethod
     def prepare_item(self, payload: StagePayload) -> PreparedItemT:
-        """Extract model-specific decode input from one payload."""
+        """Prepare a payload for decoding."""
 
     @abstractmethod
     def decode_batch(self, items: list[PreparedItemT]) -> list[DecodedItemT]:
-        """Decode one batch and return one decoded result per item."""
+        """Decode a batch of items."""
 
     @abstractmethod
     def store_result(
@@ -29,14 +29,13 @@ class BatchVocoderBase(ABC, Generic[PreparedItemT, DecodedItemT]):
         item: PreparedItemT,
         decoded: DecodedItemT,
     ) -> StagePayload:
-        """Write one decoded result back into its payload."""
+        """Store a decoded item in its payload."""
 
     def batch_size_mismatch_error(self, *, actual: int, expected: int) -> Exception:
         return RuntimeError(
             f"{self.__class__.__name__}.decode_batch returned {actual} items for {expected} requests"
         )
 
-    # Base-owned backbone shared by all BatchVocode
     def compute(self, payload: StagePayload) -> StagePayload:
         return self.compute_batch([payload])[0]
 
