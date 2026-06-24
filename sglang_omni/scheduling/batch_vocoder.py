@@ -1,4 +1,4 @@
-"""Base class for batched vocoders.  (keke0315)
+"""Shared base class for non-streaming batched vocoders  (keke0315)
 """
 
 from __future__ import annotations
