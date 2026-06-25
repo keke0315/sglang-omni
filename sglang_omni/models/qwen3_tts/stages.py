@@ -229,11 +229,6 @@ class _Qwen3TTSBatchVocoder(
             payload.data["usage"] = usage
         return payload
 
-    def batch_size_mismatch_error(self, *, actual: int, expected: int) -> Exception:
-        return RuntimeError(
-            f"Qwen3-TTS speech tokenizer returned {actual} audios for {expected} requests"
-        )
-
 
 def create_preprocessing_executor(model_path: str) -> SimpleScheduler:
     del model_path

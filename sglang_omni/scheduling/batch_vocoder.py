@@ -31,11 +31,6 @@ class BatchVocoderBase(ABC, Generic[PreparedItemT, DecodedItemT]):
     ) -> StagePayload:
         """Store a decoded item in its payload."""
 
-    def batch_size_mismatch_error(self, *, actual: int, expected: int) -> Exception:
-        return RuntimeError(
-            f"{self.__class__.__name__}.decode_batch returned {actual} items for {expected} requests"
-        )
-
     def compute(self, payload: StagePayload) -> StagePayload:
         return self.compute_batch([payload])[0]
 
@@ -43,8 +38,9 @@ class BatchVocoderBase(ABC, Generic[PreparedItemT, DecodedItemT]):
         items = [self.prepare_item(payload) for payload in payloads]
         decoded_items = self.decode_batch(items)
         if len(decoded_items) != len(items):
-            raise self.batch_size_mismatch_error(
-                actual=len(decoded_items), expected=len(items)
+            raise RuntimeError(
+                f"{self.__class__.__name__}.decode_batch returned "
+                f"{len(decoded_items)} items for {len(items)} requests"
             )
         return [
             self.store_result(payload, item, decoded)
