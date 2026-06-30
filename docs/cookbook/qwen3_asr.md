@@ -66,7 +66,22 @@ print(resp.json()["text"])
 
 ## Benchmarking
 
-The current repository does not contain `benchmarks/eval/benchmark_qwen3_asr_concurrency.py`. Qwen3-ASR correctness and concurrency coverage is in `tests/test_model/test_qwen3_asr_ci.py`, which transcribes SeedTTS samples through `/v1/audio/transcriptions` and checks WER, throughput, latency, and RTF.
+SeedTTS EN concurrency/WER benchmarking lives in
+`benchmarks/eval/benchmark_qwen3_asr_concurrency.py`. The same entry supports
+both Qwen3-ASR (default) and [Fun-ASR-Nano](fun_asr.md) (`--model fun_asr`);
+the per-model HTTP knobs are resolved by `benchmarks.tasks.tts.make_asr_send_fn`.
+
+```bash
+sgl-omni serve --model-path Qwen/Qwen3-ASR-1.7B --port 8000
+
+# Sweep the full SeedTTS EN set (1088 clips) at 1..64 concurrency, 3 repeats:
+python -m benchmarks.eval.benchmark_qwen3_asr_concurrency \
+  --port 8000 --concurrencies 1,2,4,8,16,32,64 --repeats 3
+```
+
+Qwen3-ASR correctness and concurrency coverage is in
+`tests/test_model/test_qwen3_asr_ci.py`, which transcribes SeedTTS samples
+through `/v1/audio/transcriptions` and checks WER, throughput, latency, and RTF.
 
 ```bash
 QWEN3_ASR_CI_CONCURRENCY=32 pytest tests/test_model/test_qwen3_asr_ci.py -s
