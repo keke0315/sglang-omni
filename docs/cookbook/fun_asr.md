@@ -11,7 +11,7 @@ Install `sglang-omni` by following [Installation](../get_started/installation.md
 then download the model:
 
 ```bash
-# It should be noted that another same model's weight is not in the huggingface format.
+# Use the -hf variant
 hf download FunAudioLLM/Fun-ASR-Nano-2512-hf
 ```
 
