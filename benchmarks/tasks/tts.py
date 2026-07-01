@@ -237,7 +237,7 @@ DEFAULT_ASR_TRANSCRIBE_CONCURRENCY = int(
     os.getenv("QWEN3_ASR_CONCURRENCY", os.getenv("SEEDTTS_ASR_CONCURRENCY", "32"))
 )
 
-FUN_ASR_MODEL_PATH = os.getenv("FUN_ASR_MODEL_PATH", "FunAudio/Fun-ASR-Nano")
+FUN_ASR_MODEL_PATH = os.getenv("FUN_ASR_MODEL_PATH", "FunAudioLLM/Fun-ASR-Nano-2512-hf")
 FUN_ASR_REQUEST_TIMEOUT_S = 300
 # note (PoTaTo-Mika): Fun-ASR-Nano transcribes with greedy decoding
 # (temperature=0.0); 256 tokens comfortably covers SeedTTS EN clips.
@@ -336,12 +336,35 @@ def transcribe(asr: dict, wav_path: str, lang: str, device: str) -> str:
 
 
 @dataclass
-class AsrBackendConfig:
-    """Per-model knobs for the /v1/audio/transcriptions send_fn.
+class AsrBackend:
+    """Registry spec for one ASR backend's HTTP knobs.
 
-    Qwen3-ASR must NOT send temperature (the server bumps 0 -> 0.01; pure greedy
-    degenerates). Fun-ASR-Nano transcribes greedily at temperature=0.0, so it
-    sends the field explicitly.
+    Each backend declares the per-model defaults that make_asr_send_fn needs:
+    max_new_tokens and whether to send temperature. A backend is selected by
+    matching its model_path against path_markers (lowercased substrings, all
+    required). The fallback backend has empty path_markers and is returned when
+    nothing else matches.
+    """
+
+    name: str
+    max_new_tokens: int
+    send_temperature: bool
+    temperature: float = 0.0
+    path_markers: tuple[str, ...] = ()
+
+    def matches(self, model_path: str) -> bool:
+        if not self.path_markers:
+            return False
+        lowered = model_path.lower()
+        return all(marker in lowered for marker in self.path_markers)
+
+
+@dataclass
+class AsrBackendConfig:
+    """Resolved per-call config for the /v1/audio/transcriptions send_fn.
+
+    Produced by _resolve_asr_backend_config from an AsrBackend registry entry
+    plus the caller's model_path and optional overrides.
     """
 
     model_path: str
@@ -350,9 +373,25 @@ class AsrBackendConfig:
     temperature: float = 0.0
 
 
-def _is_fun_asr_model(model_path: str) -> bool:
-    lowered = model_path.lower()
-    return "fun" in lowered and "asr" in lowered
+# note (PoTaTo-Mika): ASR backend registry. To support a new ASR model, append
+# an AsrBackend entry here with its max_new_tokens / temperature knobs and a
+# path_markers tuple that matches its HuggingFace model id. The first entry
+# whose matches(model_path) is True wins; ASR_DEFAULT_BACKEND is the fallback.
+ASR_BACKENDS: tuple[AsrBackend, ...] = (
+    AsrBackend(
+        name="fun_asr",
+        max_new_tokens=FUN_ASR_MAX_NEW_TOKENS,
+        send_temperature=True,
+        temperature=0.0,
+        path_markers=("fun", "asr"),
+    ),
+)
+
+ASR_DEFAULT_BACKEND = AsrBackend(
+    name="qwen3_asr",
+    max_new_tokens=QWEN3_ASR_MAX_NEW_TOKENS,
+    send_temperature=False,
+)
 
 
 def _resolve_asr_backend_config(
@@ -360,27 +399,24 @@ def _resolve_asr_backend_config(
     *,
     max_new_tokens: int | None = None,
 ) -> AsrBackendConfig:
-    """Pick the ASR backend config for ``model_path``.
+    """Resolve the ASR backend config for model_path from the registry.
 
-    Fun-ASR-Nano is detected by name; anything else falls back to Qwen3-ASR
-    (the historical default), including whisper paths which never reach here
-    because the concurrency eval targets the Omni ASR router directly.
+    Walks ASR_BACKENDS in order and picks the first backend whose
+    matches(model_path) is True; falls back to ASR_DEFAULT_BACKEND (Qwen3-ASR)
+    when nothing matches. Callers can override max_new_tokens per call.
     """
-    if _is_fun_asr_model(model_path):
-        return AsrBackendConfig(
-            model_path=model_path,
-            max_new_tokens=max_new_tokens
-            if max_new_tokens is not None
-            else FUN_ASR_MAX_NEW_TOKENS,
-            send_temperature=True,
-            temperature=0.0,
-        )
+    selected = ASR_DEFAULT_BACKEND
+    for backend in ASR_BACKENDS:
+        if backend.matches(model_path):
+            selected = backend
+            break
     return AsrBackendConfig(
         model_path=model_path,
         max_new_tokens=max_new_tokens
         if max_new_tokens is not None
-        else QWEN3_ASR_MAX_NEW_TOKENS,
-        send_temperature=False,
+        else selected.max_new_tokens,
+        send_temperature=selected.send_temperature,
+        temperature=selected.temperature,
     )
 
 
@@ -391,15 +427,16 @@ def make_asr_send_fn(
     lang: str = "en",
     max_new_tokens: int | None = None,
 ) -> SendFn:
-    """Return a *send_fn(session, sample) -> RequestResult* that transcribes one
-    SeedTTS reference clip via the Omni ``/v1/audio/transcriptions`` endpoint.
+    """Return a send_fn(session, sample) -> RequestResult that transcribes one
+    SeedTTS reference clip via the Omni /v1/audio/transcriptions endpoint.
 
-    Shared by Qwen3-ASR and Fun-ASR-Nano. The backend is resolved from
-    ``model_name``: Qwen3-ASR omits ``temperature`` (pure greedy degenerates;
-    the server bumps it to 0.01), while Fun-ASR-Nano sends ``temperature=0.0``
-    (greedy is its correct decoding mode). ``max_new_tokens`` defaults per
-    backend (Qwen3-ASR 128, Fun-ASR-Nano 256) when not given. Request timeout
-    is governed by the ``BenchmarkRunner``'s session-level ``timeout_s``.
+    The backend is resolved from model_name via the ASR_BACKENDS registry
+    (see _resolve_asr_backend_config): Qwen3-ASR (the default) omits
+    temperature because pure greedy degenerates and the server bumps 0 to
+    0.01, while Fun-ASR-Nano sends temperature=0.0 (greedy is its correct
+    decoding mode). max_new_tokens defaults per backend (Qwen3-ASR 128,
+    Fun-ASR-Nano 256) when not given. Request timeout is governed by the
+    BenchmarkRunner's session-level timeout_s.
     """
 
     cfg = _resolve_asr_backend_config(model_name, max_new_tokens=max_new_tokens)
