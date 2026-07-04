@@ -65,6 +65,9 @@ tests/
     ├── fun_asr/
     │   ├── test_pipeline.py
     │   └── test_request_builders.py
+    ├── moss_transcribe_diarize/
+    │   ├── test_request_builders.py
+    │   └── test_transcription_adapter.py
     ├── qwen3_tts/
     │   └── test_pipeline.py
     ├── higgs_tts/
@@ -285,6 +288,11 @@ that happened to contain an older version of the test.
     and `FunAsrNanoForConditionalGeneration` registry wiring
   - request builder: inclusive audio offset recording, language-prompt prefix
     construction, and result adapter direct-transcript decoding.
+- `unit_test/moss_transcribe_diarize/`: MOSS-Transcribe-Diarize unit tests:
+  - request builder audio-source resolution, single-audio enforcement, audio
+    token padding, and default transcribe+diarize prompt injection
+  - verbose_json transcription adapter: architecture-based resolution, special
+    token stripping, and speaker/timestamp segment parsing with fallback.
 - `unit_test/qwen3_omni/` Qwen3-Omni unit tests:
 
   - public CLI/config behavior
