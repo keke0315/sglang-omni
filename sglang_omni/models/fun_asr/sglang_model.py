@@ -26,10 +26,14 @@ from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.models.qwen3 import Qwen3ForCausalLM
 from sglang.srt.utils import add_prefix
 
+from sglang_omni.scheduling.stage_cache import StageOutputCache
+
 from .configuration_fun_asr import FunAsrNanoConfig
 from .tool_funcs.audio_lengths import fun_asr_low_frame_rate_length
 
 logger = logging.getLogger(__name__)
+
+_ENCODER_CACHE_MAX_ENTRIES = 64
 
 
 # ---------------------------------------------------------------------------
@@ -407,12 +411,39 @@ class FunAsrNanoForConditionalGeneration(nn.Module):
             prefix=add_prefix("language_model", prefix),
         )
         self.pattern = MultiModalityDataPaddingPatternMultimodalTokens()
+        self._encoder_cache: Optional[StageOutputCache] = None
+
+    def init_encoder_cache(self, max_bytes: int) -> None:
+        self._encoder_cache = (
+            StageOutputCache(
+                max_size=_ENCODER_CACHE_MAX_ENTRIES,
+                max_bytes=max_bytes,
+                cache_device="cpu",
+            )
+            if max_bytes and max_bytes > 0
+            else None
+        )
 
     def pad_input_ids(self, input_ids: List[int], mm_inputs: MultimodalInputs):
         return self.pattern.pad_input_tokens(input_ids, mm_inputs)
 
     def get_audio_feature(self, items: List[MultimodalDataItem]) -> torch.Tensor:
+        cache = self._encoder_cache
+        key = getattr(items[0], "hash", None) if len(items) == 1 else None
+        if cache is not None and key is not None:
+            cached = cache.get(str(key))
+            if cached is not None:
+                device = next(self.audio_adaptor.parameters()).device
+                return cached.to(device, non_blocking=True)
+            output = self._get_audio_feature_uncached(items)
+            cache.put(str(key), output)
+            return output
+        return self._get_audio_feature_uncached(items)
 
+    def _get_audio_feature_uncached(
+        self,
+        items: List[MultimodalDataItem],
+    ) -> torch.Tensor:
         device = next(self.audio_encoder.parameters()).device
         dtype = next(self.audio_encoder.parameters()).dtype
 

@@ -37,6 +37,7 @@ def create_sglang_fun_asr_executor(
     max_new_tokens: int = 256,
     mem_fraction_static: float | None = None,
     mm_embedding_cache_size_bytes: int = 0,
+    encoder_cache_size_bytes: int = 0,
     enable_torch_compile: bool = False,
     mm_attention_backend: str | None = None,
     server_args_overrides: dict[str, Any] | None = None,
@@ -108,6 +109,7 @@ def create_sglang_fun_asr_executor(
         model_worker.model_runner.init_device_graphs()
 
     init_mm_embedding_cache(mm_embedding_cache_size_bytes)
+    model_worker.model_runner.model.init_encoder_cache(encoder_cache_size_bytes)
 
     output_proc = SGLangOutputProcessor(
         capture_hidden=False,

@@ -23,6 +23,7 @@ def test_fun_asr_config_uses_batched_stage_with_32_running_requests() -> None:
     assert config.stages[0].factory.endswith("create_sglang_fun_asr_executor")
     assert config.stages[0].factory_args["device"] == "cuda:0"
     assert config.stages[0].factory_args["max_running_requests"] == 32
+    assert config.stages[0].factory_args["encoder_cache_size_bytes"] == 4 * 1024**3
     assert (
         PIPELINE_CONFIG_REGISTRY.get_config("FunAsrNanoForConditionalGeneration")
         is FunASRPipelineConfig
@@ -45,6 +46,12 @@ def test_fun_asr_stage_default_disables_multimodal_embedding_cache() -> None:
     signature = inspect.signature(create_sglang_fun_asr_executor)
 
     assert signature.parameters["mm_embedding_cache_size_bytes"].default == 0
+
+
+def test_fun_asr_stage_default_disables_encoder_cache() -> None:
+    signature = inspect.signature(create_sglang_fun_asr_executor)
+
+    assert signature.parameters["encoder_cache_size_bytes"].default == 0
 
 
 def test_fun_asr_stage_default_disables_torch_compile() -> None:

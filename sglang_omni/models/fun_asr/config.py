@@ -30,6 +30,7 @@ class FunASRPipelineConfig(PipelineConfig):
                 "device": "cuda:0",
                 "max_running_requests": 32,
                 "max_new_tokens": 256,
+                "encoder_cache_size_bytes": 4 * 1024**3,
             },
             gpu=0,
             terminal=True,
