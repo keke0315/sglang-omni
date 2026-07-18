@@ -72,6 +72,9 @@ tests/
     ├── qwen3_asr/
     │   ├── test_pipeline.py
     │   └── test_request_builders.py
+    ├── fun_asr/
+    │   ├── test_pipeline.py
+    │   └── test_request_builders.py
     ├── moss_transcribe_diarize/
     │   ├── test_encoder_cache.py
     │   ├── test_pipeline.py
@@ -323,6 +326,12 @@ that happened to contain an older version of the test.
     request builder paths
   - token-level result adapter marker handling, avoiding decode/encode
     text round-trips for byte-level BPE output.
+- `unit_test/fun_asr/`: Fun-ASR-Nano unit tests:
+  - pipeline config and stage factory: single `asr` stage, `max_running_requests=32`,
+    auto static KV budget, disabled multimodal embedding cache and torch.compile,
+    and `FunAsrNanoForConditionalGeneration` registry wiring
+  - request builder: inclusive audio offset recording, language-prompt prefix
+    construction, and result adapter direct-transcript decoding.
 - `unit_test/moss_transcribe_diarize/`: MOSS-Transcribe-Diarize unit tests:
   - pipeline config and stage factory default routing/memory contracts
   - request builder audio-source resolution, single-audio enforcement, audio
