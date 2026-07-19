@@ -36,6 +36,7 @@ def test_fun_asr_stage_default_allows_32_running_requests() -> None:
     assert signature.parameters["max_new_tokens"].default == 200
     assert signature.parameters["request_build_max_workers"].default == 2
     assert signature.parameters["request_build_max_pending"].default == 16
+    assert signature.parameters["stream_emit_interval_s"].default == 0.05
 
 
 def test_fun_asr_stage_default_uses_auto_static_kv_budget() -> None:
@@ -59,13 +60,16 @@ def test_fun_asr_stage_default_disables_torch_compile() -> None:
 def test_fun_asr_threads_generation_batch_and_request_build_policy(monkeypatch) -> None:
     build_kwargs: dict[str, object] = {}
     validations: list[dict[str, object]] = []
+    stream_builder_calls: list[dict[str, object]] = []
+    stream_output_builder = object()
+
+    def tokenizer(text, add_special_tokens=False):
+        return SimpleNamespace(input_ids=[0] * len(text))
 
     monkeypatch.setattr(
         fun_asr_stages.AutoTokenizer,
         "from_pretrained",
-        lambda *args, **kwargs: lambda text, add_special_tokens=False: SimpleNamespace(
-            input_ids=[0] * len(text)
-        ),
+        lambda *args, **kwargs: tokenizer,
     )
     monkeypatch.setattr(
         fun_asr_stages.AutoFeatureExtractor,
@@ -82,6 +86,11 @@ def test_fun_asr_threads_generation_batch_and_request_build_policy(monkeypatch) 
         fun_asr_stages,
         "make_fun_asr_scheduler_adapters",
         lambda **kwargs: (object(), object()),
+    )
+    monkeypatch.setattr(
+        fun_asr_stages,
+        "make_fun_asr_stream_output_builder",
+        lambda **kwargs: stream_builder_calls.append(kwargs) or stream_output_builder,
     )
     monkeypatch.setattr(fun_asr_stages, "ModelRunner", lambda *args, **kwargs: object())
     monkeypatch.setattr(
@@ -145,3 +154,7 @@ def test_fun_asr_threads_generation_batch_and_request_build_policy(monkeypatch) 
     ]
     assert scheduler.request_build_max_workers == 2
     assert scheduler.request_build_max_pending == 16
+    assert stream_builder_calls == [
+        {"tokenizer": tokenizer, "min_emit_interval_s": 0.05}
+    ]
+    assert scheduler.stream_output_builder is stream_output_builder
