@@ -73,7 +73,7 @@ stages = [
 | --- | --- | --- | --- |
 | `name` | `str` | required | Unique stage identifier. |
 | `factory` | `str` | required | Dotted import path to the stage factory. |
-| `factory_args` | `dict[str, Any]` | `{}` | Explicit arguments forwarded to the factory after runtime overrides and typed runtime fields are merged. Signature-dependent defaults such as `model_path`, `gpu_id`, and `total_gpu_memory_fraction` are not written here during runtime prep; the worker injects them after importing the factory. `gpu_id` is owned by placement and is **rejected** here (set the device via `gpu` instead). |
+| `factory_args` | `dict[str, Any]` | `{}` | Arguments forwarded to the factory. Runtime prep may inject `model_path` and `gpu_id` if the factory accepts them and they are not already set. |
 | `next` | `str`, `list[str]`, or `None` | `None` | Static downstream stage or stages for normal result routing. |
 | `terminal` | `bool` | `False` | Marks a stage as terminal; terminal results are sent to the coordinator. |
 | `route_fn` | `str` or `None` | `None` | Dotted function path for request-aware result routing. The function receives `(request_id, stage_output)` and returns a downstream stage name or list of stage names. |
@@ -86,7 +86,7 @@ stages = [
 | `stream_to` | `list[str]` | `[]` | Static superset of streaming targets for chunks such as hidden states or codec codes. This is parallel to normal result routing. |
 | `stream_done_to_fn` | `str` or `None` | `None` | Dotted function path for request-aware stream-completion targets. The function receives `(request_id, stage_output)` and returns the active subset of `stream_to` targets that should receive the final done signal. |
 | `project_payload` | `dict[str, str]` | `{}` | Optional target-stage to dotted projection function mapping used before writing a downstream payload. |
-| `comm` | `CommConfig` or `None` | `None` | Per-stage communication pool and Mooncake options. Transport selection is derived by `CommRouter` from locality and placement. |
+| `relay` | `RelayConfig` or `None` | `None` | Per-stage relay override. If unset, relay device and defaults are inferred from stage placement and `PipelineConfig.relay_backend`. |
 
 Routing rule: set exactly one of `next` or `terminal=True`. `route_fn` is an
 optional request-aware override for stages that already declare `next`; keep
@@ -106,8 +106,8 @@ Derived from stages:
   `PipelineConfig`
 - `terminal_stages`: computed from stages with `terminal=True`
 - `gpu_placement`: computed from stages with `gpu` set
-- communication transport: inferred from stage locality and placement
-  (`local_object`, `cuda_ipc`, host shared memory, or `mooncake`)
+- relay device: explicit `StageConfig.relay.device` when present; otherwise
+  inferred by runtime prep from `gpu` and `relay_backend`
 
 ## `PipelineConfig` Reference
 
@@ -117,6 +117,7 @@ Derived from stages:
 | `stages` | `list[StageConfig]` | required | Ordered logical stage definitions. The first stage is the default entry stage. |
 | `name` | `str` or `None` | `model_path` | Pipeline name. Used for reporting and runtime identification. |
 | `entry_stage` | `str` or `None` | first stage | Optional override for the stage that receives new requests. |
+| `relay_backend` | one of `shm`, `nccl`, `nixl`, `mooncake` | `shm` | Global relay backend used when creating per-stage relays. |
 | `fused_stages` | `list[list[str]]` | `[]` | Adjacent linear stage groups to colocate in one runtime process, enabling Stage-level local dispatch while preserving normal Stage ownership. |
 | `runtime_overrides` | `dict[str, dict[str, Any]]` | `{}` | Per-stage factory argument overrides applied during runtime prep. |
 | `env_defaults` | `dict[str, str]` | `{}` | Environment defaults applied before stage factory imports. Existing process values take precedence. |
@@ -130,9 +131,8 @@ Derived values are computed from stages, not manually maintained:
 - `terminal_stages`: all stages with `terminal=True`
 - `gpu_placement`: stage name to GPU id or TP GPU list for stages with `gpu`
 
-`CommConfig` is the per-stage communication tuning block. It contains
-`slot_size_mb`, `credits`, `mooncake_protocol`, `mooncake_hostname`, and
-`mooncake_device_name`. It does not select a transport backend.
+`RelayConfig` is the per-stage data-transfer override. It currently contains
+`slot_size_mb`, `credits`, `rank`, `world_size`, and `device`.
 
 ### Stage Fusion
 
@@ -160,12 +160,10 @@ Runtime prep builds the resolved state used by the runner:
 - validate stage names and static topology
 - compute the entry stage and terminal stages
 - allocate ZMQ endpoints
-- carry dotted factory, merge, route, and projection paths into worker specs
-- merge `factory_args` with `runtime_overrides` and typed runtime fields without
-  importing stage factories
-- prepare signature-dependent defaults such as `model_path`, `gpu_id`, and
-  `total_gpu_memory_fraction`; the worker injects them after importing the
-  factory when the factory accepts them
+- resolve dotted factory, merge, and projection functions
+- merge `factory_args` with `runtime_overrides`
+- inject global values such as `model_path` and `gpu_id` into factory args when
+  accepted by the factory
 - build relay config from stage placement and relay backend
 - wire stream targets and same-GPU stream fast paths
 
