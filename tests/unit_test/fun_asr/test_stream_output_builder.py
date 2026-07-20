@@ -93,12 +93,8 @@ def test_incremental_token_delta_and_eos_emits_no_self_delta() -> None:
     builder = _builder({1: b"foo", 2: b"bar", _EOS: b"<eos>"})
     rd = _make_req_data()
 
-    assert [m.data["text"] for m in builder("r", rd, _make_req_output(1))] == [
-        "foo"
-    ]
-    assert [m.data["text"] for m in builder("r", rd, _make_req_output(2))] == [
-        "bar"
-    ]
+    assert [m.data["text"] for m in builder("r", rd, _make_req_output(1))] == ["foo"]
+    assert [m.data["text"] for m in builder("r", rd, _make_req_output(2))] == ["bar"]
     assert builder("r", rd, _make_req_output(_EOS)) == []
 
 
@@ -108,9 +104,7 @@ def test_min_emit_interval_first_delta_immediate_then_eos_flushes() -> None:
 
     assert [m.data["text"] for m in builder("r", rd, _make_req_output(1))] == ["A"]
     assert builder("r", rd, _make_req_output(2)) == []
-    assert [m.data["text"] for m in builder("r", rd, _make_req_output(_EOS))] == [
-        "B"
-    ]
+    assert [m.data["text"] for m in builder("r", rd, _make_req_output(_EOS))] == ["B"]
 
 
 def test_per_request_state_is_isolated() -> None:
